@@ -1,0 +1,61 @@
+# Ignore object files and static libraries
+*.o
+*.obj
+*.lo
+*.la
+*.al
+*.libs
+
+# Ignore dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Ignore executables
+*.exe
+*.out
+*.app
+
+# Ignore build directories
+/build/
+/bin/
+/lib/
+/CMakeFiles/
+/CMakeCache.txt
+Makefile
+cmake_install.cmake
+*.dir
+
+# Ignore Visual Studio files
+*.sdf
+*.suo
+*.vcxproj*
+*.pdb
+*.idb
+*.ipch
+*.log
+
+# Ignore Code::Blocks files
+*.layout
+*.depend
+*.layout.save
+
+# Ignore Qt Creator files
+*.pro.user
+*.qbs.user
+*.user
+
+# Ignore CLion and JetBrains IDE files
+.idea/
+cmake-build-*/
+
+# Ignore backup and temporary files
+*~
+*.swp
+.DS_Store
+Thumbs.db
+
+# Ignore generated coverage data
+*.gcno
+*.gcda
+*.gcov
