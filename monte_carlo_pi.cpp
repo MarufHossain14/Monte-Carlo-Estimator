@@ -1,180 +1,231 @@
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <fstream>
+#include <functional>
+#include <iomanip>
 #include <iostream>
 #include <random>
-#include <chrono>
-#include <fstream>
-#include <iomanip>
+#include <string>
+#include <utility>
 #include <vector>
-#include <cmath>
 
-// Define M_PI if not available (Windows)
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+namespace {
 
-class MonteCarloPiEstimator {
-private:
-    std::mt19937 rng;
-    std::uniform_real_distribution<double> dist;
-    
-public:
-    MonteCarloPiEstimator(unsigned int seed = std::random_device{}()) 
-        : rng(seed), dist(-1.0, 1.0) {}
-    
-    // Calculate π using Monte Carlo method
-    double estimatePi(unsigned long long numSamples, bool showProgress = false) {
-        unsigned long long pointsInside = 0;
-        unsigned long long progressStep = numSamples / 10; // Show progress every 10%
-        
-        auto startTime = std::chrono::high_resolution_clock::now();
-        
-        for (unsigned long long i = 0; i < numSamples; ++i) {
-            double x = dist(rng);
-            double y = dist(rng);
-            
-            // Check if point is inside unit circle (x² + y² ≤ 1)
-            if (x * x + y * y <= 1.0) {
-                pointsInside++;
-            }
-            
-            // Show progress if requested
-            if (showProgress && progressStep > 0 && (i + 1) % progressStep == 0) {
-                double currentEstimate = 4.0 * static_cast<double>(pointsInside) / (i + 1);
-                std::cout << "Progress: " << std::fixed << std::setprecision(1) 
-                         << (100.0 * (i + 1) / numSamples) << "% - "
-                         << "Current π estimate: " << std::setprecision(6) << currentEstimate << std::endl;
-            }
-        }
-        
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-        
-        double piEstimate = 4.0 * static_cast<double>(pointsInside) / numSamples;
-        
-        std::cout << "\n=== Monte Carlo π Estimation Results ===" << std::endl;
-        std::cout << "Number of samples: " << numSamples << std::endl;
-        std::cout << "Points inside circle: " << pointsInside << std::endl;
-        std::cout << "Estimated π: " << std::fixed << std::setprecision(10) << piEstimate << std::endl;
-        std::cout << "Actual π: " << std::fixed << std::setprecision(10) << M_PI << std::endl;
-        std::cout << "Absolute error: " << std::fixed << std::setprecision(10) << std::abs(piEstimate - M_PI) << std::endl;
-        std::cout << "Relative error: " << std::fixed << std::setprecision(6) 
-                 << (std::abs(piEstimate - M_PI) / M_PI) * 100 << "%" << std::endl;
-        std::cout << "Computation time: " << duration.count() << " ms" << std::endl;
-        
-        return piEstimate;
-    }
-    
-    // Generate intermediate estimates for plotting
-    std::vector<std::pair<unsigned long long, double>> generateIntermediateEstimates(
-        unsigned long long numSamples, unsigned long long stepSize) {
-        
-        std::vector<std::pair<unsigned long long, double>> estimates;
-        unsigned long long pointsInside = 0;
-        
-        for (unsigned long long i = 0; i < numSamples; ++i) {
-            double x = dist(rng);
-            double y = dist(rng);
-            
-            if (x * x + y * y <= 1.0) {
-                pointsInside++;
-            }
-            
-            if ((i + 1) % stepSize == 0) {
-                double currentEstimate = 4.0 * static_cast<double>(pointsInside) / (i + 1);
-                estimates.emplace_back(i + 1, currentEstimate);
-            }
-        }
-        
-        return estimates;
-    }
-    
-    // Save results to CSV file
-    void saveResultsToCSV(const std::string& filename, unsigned long long numSamples, 
-                         bool includeIntermediate = false) {
-        std::ofstream file(filename);
-        if (!file.is_open()) {
-            std::cerr << "Error: Could not open file " << filename << std::endl;
-            return;
-        }
-        
-        file << "Sample_Count,Pi_Estimate,Error" << std::endl;
-        
-        if (includeIntermediate) {
-            unsigned long long stepSize = std::max(1ULL, numSamples / 1000); // 1000 data points max
-            auto estimates = generateIntermediateEstimates(numSamples, stepSize);
-            
-            for (const auto& estimate : estimates) {
-                double error = std::abs(estimate.second - M_PI);
-                file << estimate.first << "," << std::fixed << std::setprecision(10) 
-                     << estimate.second << "," << error << std::endl;
-            }
-        } else {
-            // Just save final result
-            double finalEstimate = estimatePi(numSamples, false);
-            double error = std::abs(finalEstimate - M_PI);
-            file << numSamples << "," << std::fixed << std::setprecision(10) 
-                 << finalEstimate << "," << error << std::endl;
-        }
-        
-        file.close();
-        std::cout << "Results saved to " << filename << std::endl;
-    }
+constexpr double kPi = 3.14159265358979323846;
+
+struct EstimatePoint {
+    std::uint64_t sample_count;
+    double pi_estimate;
 };
 
-void printUsage(const char* programName) {
-    std::cout << "Usage: " << programName << " [options]" << std::endl;
-    std::cout << "Options:" << std::endl;
-    std::cout << "  -n <number>    Number of samples (default: 1000000)" << std::endl;
-    std::cout << "  -p             Show progress during computation" << std::endl;
-    std::cout << "  -s <filename>  Save results to CSV file" << std::endl;
-    std::cout << "  -i             Include intermediate estimates in CSV" << std::endl;
-    std::cout << "  -h             Show this help message" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Examples:" << std::endl;
-    std::cout << "  " << programName << " -n 1000000 -p" << std::endl;
-    std::cout << "  " << programName << " -n 10000000 -s results.csv -i" << std::endl;
+struct EstimationResult {
+    std::uint64_t sample_count;
+    std::uint64_t points_inside_circle;
+    double pi_estimate;
+    std::vector<EstimatePoint> intermediate_estimates;
+};
+
+using ProgressCallback =
+    std::function<void(std::uint64_t completed, double current_estimate)>;
+
+class MonteCarloPiEstimator {
+public:
+    explicit MonteCarloPiEstimator(unsigned int seed = std::random_device{}())
+        : engine_(seed), coordinate_(-1.0, 1.0) {}
+
+    /**
+     * Run the simulation without performing console or file output.
+     *
+     * Callers decide how results are presented. An optional callback provides
+     * progress updates without coupling the simulation to a terminal.
+     */
+    [[nodiscard]] EstimationResult estimate(
+        std::uint64_t sample_count,
+        bool collect_intermediate_estimates,
+        const ProgressCallback& progress_callback = {}) {
+        std::uint64_t points_inside = 0;
+        const std::uint64_t progress_step =
+            std::max<std::uint64_t>(1, sample_count / 10);
+        const std::uint64_t estimate_step =
+            std::max<std::uint64_t>(1, sample_count / 1000);
+
+        std::vector<EstimatePoint> intermediate_estimates;
+        if (collect_intermediate_estimates) {
+            intermediate_estimates.reserve(1001);
+        }
+
+        for (std::uint64_t index = 0; index < sample_count; ++index) {
+            const double x = coordinate_(engine_);
+            const double y = coordinate_(engine_);
+
+            if (x * x + y * y <= 1.0) {
+                ++points_inside;
+            }
+
+            const std::uint64_t completed = index + 1;
+            const double current_estimate =
+                4.0 * static_cast<double>(points_inside) /
+                static_cast<double>(completed);
+
+            if (progress_callback &&
+                (completed % progress_step == 0 ||
+                 completed == sample_count)) {
+                progress_callback(completed, current_estimate);
+            }
+
+            if (collect_intermediate_estimates &&
+                (completed % estimate_step == 0 ||
+                 completed == sample_count)) {
+                intermediate_estimates.push_back({completed, current_estimate});
+            }
+        }
+
+        const double final_estimate =
+            4.0 * static_cast<double>(points_inside) /
+            static_cast<double>(sample_count);
+
+        return {
+            sample_count,
+            points_inside,
+            final_estimate,
+            std::move(intermediate_estimates),
+        };
+    }
+
+private:
+    std::mt19937 engine_;
+    std::uniform_real_distribution<double> coordinate_;
+};
+
+void print_result(
+    const EstimationResult& result,
+    std::chrono::duration<double, std::milli> elapsed) {
+    const double absolute_error = std::abs(result.pi_estimate - kPi);
+
+    std::cout << "\n=== Monte Carlo Pi Estimation Results ===\n"
+              << "Number of samples: " << result.sample_count << '\n'
+              << "Points inside circle: "
+              << result.points_inside_circle << '\n'
+              << std::fixed << std::setprecision(10)
+              << "Estimated pi: " << result.pi_estimate << '\n'
+              << "Actual pi: " << kPi << '\n'
+              << "Absolute error: " << absolute_error << '\n'
+              << std::setprecision(6)
+              << "Relative error: " << (absolute_error / kPi) * 100.0
+              << "%\n"
+              << std::setprecision(3)
+              << "Computation time: " << elapsed.count() << " ms\n";
 }
 
+bool write_csv(
+    const std::string& filename,
+    const EstimationResult& result,
+    bool include_intermediate_estimates) {
+    std::ofstream file(filename);
+    if (!file) {
+        std::cerr << "Error: Could not open file " << filename << '\n';
+        return false;
+    }
+
+    file << "Sample_Count,Pi_Estimate,Error\n";
+    file << std::fixed << std::setprecision(10);
+
+    if (include_intermediate_estimates) {
+        for (const auto& estimate : result.intermediate_estimates) {
+            file << estimate.sample_count << ',' << estimate.pi_estimate << ','
+                 << std::abs(estimate.pi_estimate - kPi) << '\n';
+        }
+    } else {
+        file << result.sample_count << ',' << result.pi_estimate << ','
+             << std::abs(result.pi_estimate - kPi) << '\n';
+    }
+
+    if (!file) {
+        std::cerr << "Error: Failed while writing " << filename << '\n';
+        return false;
+    }
+
+    std::cout << "Results saved to " << filename << '\n';
+    return true;
+}
+
+void print_usage(const char* program_name) {
+    std::cout << "Usage: " << program_name << " [options]\n"
+              << "Options:\n"
+              << "  -n <number>    Number of samples (default: 1000000)\n"
+              << "  -p             Show progress during computation\n"
+              << "  -s <filename>  Save results to a CSV file\n"
+              << "  -i             Include intermediate estimates in the CSV\n"
+              << "  -h, --help     Show this help message\n\n"
+              << "Examples:\n"
+              << "  " << program_name << " -n 1000000 -p\n"
+              << "  " << program_name
+              << " -n 10000000 -s results.csv -i\n";
+}
+
+}  // namespace
+
 int main(int argc, char* argv[]) {
-    unsigned long long numSamples = 1000000; // Default value
-    bool showProgress = false;
-    bool saveToFile = false;
-    bool includeIntermediate = false;
+    std::uint64_t sample_count = 1'000'000;
+    bool show_progress = false;
+    bool save_to_file = false;
+    bool include_intermediate_estimates = false;
     std::string filename = "monte_carlo_pi_results.csv";
-    
-    // Parse command line arguments
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        
-        if (arg == "-h" || arg == "--help") {
-            printUsage(argv[0]);
+
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+
+        if (argument == "-h" || argument == "--help") {
+            print_usage(argv[0]);
             return 0;
-        } else if (arg == "-n" && i + 1 < argc) {
-            numSamples = std::stoull(argv[++i]);
-        } else if (arg == "-p") {
-            showProgress = true;
-        } else if (arg == "-s" && i + 1 < argc) {
-            filename = argv[++i];
-            saveToFile = true;
-        } else if (arg == "-i") {
-            includeIntermediate = true;
+        }
+        if (argument == "-n" && index + 1 < argc) {
+            sample_count = std::stoull(argv[++index]);
+        } else if (argument == "-p") {
+            show_progress = true;
+        } else if (argument == "-s" && index + 1 < argc) {
+            filename = argv[++index];
+            save_to_file = true;
+        } else if (argument == "-i") {
+            include_intermediate_estimates = true;
         } else {
-            std::cerr << "Unknown option: " << arg << std::endl;
-            printUsage(argv[0]);
+            std::cerr << "Unknown option: " << argument << '\n';
+            print_usage(argv[0]);
             return 1;
         }
     }
-    
-    std::cout << "Monte Carlo π Estimator" << std::endl;
-    std::cout << "=========================" << std::endl;
-    
-    // Create estimator and run simulation
-    MonteCarloPiEstimator estimator;
-    
-    if (saveToFile) {
-        estimator.saveResultsToCSV(filename, numSamples, includeIntermediate);
-    } else {
-        estimator.estimatePi(numSamples, showProgress);
+
+    std::cout << "Monte Carlo Pi Estimator\n"
+              << "========================\n";
+
+    ProgressCallback progress_callback;
+    if (show_progress) {
+        progress_callback = [sample_count](
+                                std::uint64_t completed,
+                                double current_estimate) {
+            std::cout << "Progress: " << std::fixed << std::setprecision(1)
+                      << 100.0 * static_cast<double>(completed) /
+                             static_cast<double>(sample_count)
+                      << "% - Current pi estimate: " << std::setprecision(6)
+                      << current_estimate << '\n';
+        };
     }
-    
+
+    MonteCarloPiEstimator estimator;
+    const auto start = std::chrono::steady_clock::now();
+    const auto result = estimator.estimate(
+        sample_count, include_intermediate_estimates, progress_callback);
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start);
+
+    print_result(result, elapsed);
+
+    if (save_to_file &&
+        !write_csv(filename, result, include_intermediate_estimates)) {
+        return 1;
+    }
+
     return 0;
-} 
+}
