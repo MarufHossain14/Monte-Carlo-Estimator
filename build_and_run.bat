@@ -33,10 +33,10 @@ echo ===============================================
 echo Available options:
 echo   monte_carlo_pi.exe -h              (show help)
 echo   monte_carlo_pi.exe -p              (show progress)
-echo   monte_carlo_pi.exe -n 100000 -p    (custom samples with progress)
-echo   monte_carlo_pi.exe -s results.csv  (save to CSV)
-echo   monte_carlo_pi.exe -s conv.csv -i  (save intermediate results)
+echo   monte_carlo_pi.exe -n 100000 --seed 42 -p
+echo   monte_carlo_pi.exe --seed 42 -s results.csv
+echo   monte_carlo_pi.exe --seed 42 -s conv.csv -i
 echo ===============================================
 echo.
 
-pause 
+pause

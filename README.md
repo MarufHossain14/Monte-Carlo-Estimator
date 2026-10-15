@@ -1,195 +1,177 @@
-# Monte Carlo π Estimator
+# Monte Carlo Estimator
 
-A C++ program that estimates the value of π using Monte Carlo simulation. The program generates random points within a square of side length 2 and counts how many fall inside the inscribed unit circle to compute an approximation of π.
+This C++17 project is being developed from a small Monte Carlo pi estimator
+into a tested particle-transport simulation and performance investigation.
 
-## Mathematical Background
+The pi estimator remains as an introductory example. The particle-transport
+core models transmission, reflection, absorption, and scattering in a
+one-dimensional slab. Its assumptions are described in
+[the particle model documentation](docs/particle_model.md).
 
-The Monte Carlo method for estimating π works as follows:
+## Current components
 
-1. Consider a square with side length 2 centered at the origin
-2. Inscribe a unit circle (radius 1) within the square
-3. Generate random points uniformly distributed within the square
-4. Count the ratio of points that fall inside the circle
-5. Since the area of the circle is πr² = π and the area of the square is 4, the ratio of points inside the circle to total points approaches π/4
-6. Therefore, π ≈ 4 × (points inside circle) / (total points)
+- `monte_carlo_pi`: a command-line Monte Carlo pi estimator with reproducible
+  seeds, progress reporting, precise timing, and CSV export.
+- `particle_transport`: the reusable C++ simulation library.
+- `particle_transport_tests`: correctness tests for the initial transport
+  model.
+- `plot_results.py`: an optional Python script for visualizing pi-estimator
+  CSV output.
 
-## Features
+## How the pi estimator works
 
-- **Modern C++17**: Uses `std::mt19937` random number generator for high-quality randomness
-- **High Performance**: Optimized for speed with efficient algorithms
-- **Progress Tracking**: Optional real-time progress display during computation
-- **Command Line Interface**: Flexible command-line options for customization
-- **CSV Export**: Save results to CSV files for analysis and plotting
-- **Error Analysis**: Calculates absolute and relative errors compared to actual π
-- **Timing**: Measures and displays computation time
-- **Intermediate Results**: Option to save intermediate estimates for convergence analysis
+The program samples points uniformly from the square `[-1, 1] x [-1, 1]`.
+A point is inside the unit circle when:
+
+```text
+x*x + y*y <= 1
+```
+
+The unit circle has area pi and the square has area 4. Therefore, the fraction
+of sampled points inside the circle approaches `pi / 4`, giving the estimator:
+
+```text
+pi_estimate = 4 * points_inside / total_points
+```
+
+Monte Carlo error fluctuates between runs; it does not decrease monotonically.
+Its typical scale decreases in proportion to `1 / sqrt(N)`, so obtaining an
+additional decimal digit generally requires about 100 times as many samples.
 
 ## Requirements
 
-- C++17 compatible compiler (GCC 7+, Clang 5+, MSVC 2017+)
-- CMake 3.10+ (optional, for CMake build)
-- Make (optional, for Makefile build)
+- A C++17 compiler
+- CMake 3.10 or newer
+- Make, if using the included Makefile instead of CMake
+- Python 3 with the packages in `requirements.txt`, only for plotting
 
-## Building the Project
+## Build with CMake
 
-### Option 1: Using CMake (Recommended)
+Configure an optimized build from the repository root:
 
 ```bash
-mkdir build
-cd build
-cmake ..
-cmake --build . --config Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
 ```
 
-### Option 2: Using Makefile
+On Linux and macOS, the pi executable is:
+
+```bash
+./build/bin/monte_carlo_pi
+```
+
+With a multi-configuration generator such as Visual Studio, include the
+configuration while building:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release
+.\build\bin\Release\monte_carlo_pi.exe
+```
+
+## Run the tests
+
+After building with CMake:
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+## Alternative pi-estimator builds
+
+Using the Makefile:
 
 ```bash
 make
-```
-
-### Option 3: Direct Compilation
-
-```bash
-g++ -std=c++17 -O3 -o monte_carlo_pi monte_carlo_pi.cpp -lm
-```
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Run with default settings (1,000,000 samples)
 ./monte_carlo_pi
-
-# Run with progress display
-./monte_carlo_pi -p
-
-# Run with custom number of samples
-./monte_carlo_pi -n 10000000 -p
 ```
 
-### Command Line Options
-
-- `-n <number>`: Number of samples (default: 1,000,000)
-- `-p`: Show progress during computation
-- `-s <filename>`: Save results to CSV file
-- `-i`: Include intermediate estimates in CSV output
-- `-h` or `--help`: Show help message
-
-### Examples
+Using GCC directly:
 
 ```bash
-# Quick test with 100,000 samples and progress
-./monte_carlo_pi -n 100000 -p
-
-# High-precision run with 10 million samples
-./monte_carlo_pi -n 10000000 -p
-
-# Save final result to CSV
-./monte_carlo_pi -n 1000000 -s result.csv
-
-# Save intermediate results for plotting
-./monte_carlo_pi -n 1000000 -s convergence.csv -i
+g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic \
+    monte_carlo_pi.cpp -o monte_carlo_pi
+./monte_carlo_pi
 ```
 
-### Makefile Targets
+Windows users with `g++` available in `PATH` can also run
+`build_and_run.bat`.
 
-If using the Makefile:
+## Pi-estimator usage
+
+```text
+Usage: monte_carlo_pi [options]
+Options:
+  -n <number>    Number of samples (default: 1000000)
+  -p             Show progress during computation
+  --seed <number> Use a reproducible 32-bit random seed
+  -s <filename>  Save results to a CSV file
+  -i             Include intermediate estimates in the CSV
+  -h, --help     Show the help message
+```
+
+Examples:
 
 ```bash
-make run              # Run with default settings
-make run-progress     # Run with progress display
-make run-samples      # Run with 10M samples and progress
-make run-csv          # Generate CSV with intermediate results
-make clean            # Clean build files
+# A reproducible run
+./build/bin/monte_carlo_pi -n 1000000 --seed 42
+
+# Display progress
+./build/bin/monte_carlo_pi -n 10000000 --seed 42 -p
+
+# Save the final result
+./build/bin/monte_carlo_pi -n 1000000 --seed 42 -s result.csv
+
+# Save intermediate convergence data
+./build/bin/monte_carlo_pi -n 1000000 --seed 42 \
+    -s convergence.csv -i
 ```
 
-## Output Format
+When no seed is supplied, the program generates one and prints it with the
+result. Pass that value to `--seed` to reproduce the same random sequence.
 
-The program displays:
+The `-i` option is meaningful only with `-s`, so using it alone is rejected.
 
-- Number of samples used
-- Points inside the circle
-- Estimated value of π
-- Actual value of π (for comparison)
-- Absolute error
-- Relative error (percentage)
-- Computation time
+## CSV format
 
-Example output:
+CSV output contains:
 
-```
-Monte Carlo π Estimator
-=========================
+- `Sample_Count`: samples included in the estimate;
+- `Pi_Estimate`: the estimate at that sample count;
+- `Error`: absolute difference from pi;
+- `Seed`: the random seed used for the run.
 
-=== Monte Carlo π Estimation Results ===
-Number of samples: 1000000
-Points inside circle: 785398
-Estimated π: 3.1415920000
-Actual π: 3.1415926536
-Absolute error: 0.0000006536
-Relative error: 0.000021%
-Computation time: 45 ms
+Without `-i`, the file contains one final result. With `-i`, it contains at
+most about 1,000 intermediate estimates plus the final estimate.
+
+## Plot results
+
+Install the optional plotting dependencies:
+
+```bash
+python3 -m pip install -r requirements.txt
 ```
 
-## CSV Output Format
+Generate data and create a convergence plot:
 
-When saving to CSV, the file contains:
-
-- `Sample_Count`: Number of samples at this point
-- `Pi_Estimate`: Current π estimate
-- `Error`: Absolute error from actual π
-
-## Performance Considerations
-
-- **Sample Size**: More samples generally provide better accuracy, but take longer to compute
-- **Random Number Quality**: Uses Mersenne Twister (MT19937) for high-quality randomness
-- **Optimization**: Compiled with `-O3` for maximum performance
-- **Memory Usage**: Minimal memory footprint, suitable for very large sample sizes
-
-## Accuracy vs. Sample Size
-
-Typical accuracy improvements:
-
-- 10,000 samples: ~0.1% error
-- 100,000 samples: ~0.03% error
-- 1,000,000 samples: ~0.01% error
-- 10,000,000 samples: ~0.003% error
-
-## Visualization
-
-The CSV output can be used with plotting tools like:
-
-- Python (matplotlib, pandas)
-- R (ggplot2)
-- Excel or Google Sheets
-- GNU Plot
-
-Example Python plotting script:
-
-```python
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Load data
-df = pd.read_csv('convergence.csv')
-
-# Plot convergence
-plt.figure(figsize=(10, 6))
-plt.semilogx(df['Sample_Count'], df['Pi_Estimate'], 'b-', label='Estimated π')
-plt.axhline(y=3.1415926536, color='r', linestyle='--', label='Actual π')
-plt.xlabel('Number of Samples')
-plt.ylabel('π Estimate')
-plt.title('Monte Carlo π Convergence')
-plt.legend()
-plt.grid(True)
-plt.show()
+```bash
+./build/bin/monte_carlo_pi -n 1000000 --seed 42 \
+    -s convergence.csv -i
+python3 plot_results.py convergence.csv -o convergence.png
 ```
+
+## Reproducibility
+
+When reporting results, record at least:
+
+- the random seed and sample count;
+- build type and compiler flags;
+- compiler name and version;
+- processor and operating system.
+
+Progress output performs terminal I/O during the measured run. Disable it for
+performance measurements.
 
 ## License
 
-This project is open source and available under the MIT License.
-
-## Contributing
-
-Feel free to submit issues, feature requests, or pull requests to improve the project.
+This project is available under the [MIT License](LICENSE).
