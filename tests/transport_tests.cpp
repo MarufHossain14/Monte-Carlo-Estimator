@@ -1,0 +1,143 @@
+#include "transport/transport.hpp"
+
+#include <cmath>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <limits>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+void expect(bool condition, const std::string& message) {
+    if (!condition) {
+        throw std::runtime_error(message);
+    }
+}
+
+void expect_invalid_argument(
+    const std::function<void()>& operation,
+    const std::string& message) {
+    try {
+        operation();
+    } catch (const std::invalid_argument&) {
+        return;
+    }
+    throw std::runtime_error(message);
+}
+
+bool same_results(
+    const transport::SimulationResults& left,
+    const transport::SimulationResults& right) {
+    return left.transmitted == right.transmitted &&
+        left.reflected == right.reflected &&
+        left.absorbed == right.absorbed &&
+        left.scattered_at_least_once == right.scattered_at_least_once &&
+        left.total_collisions == right.total_collisions &&
+        left.total_path_length == right.total_path_length;
+}
+
+void test_vacuum_transmits_every_particle() {
+    const transport::Material vacuum{};
+    const transport::SimulationConfig config{1'000, 2.5, 42, 100};
+
+    const auto results = transport::simulate(vacuum, config);
+
+    expect(results.transmitted == config.particle_count,
+           "vacuum should transmit every particle");
+    expect(results.reflected == 0, "vacuum should not reflect particles");
+    expect(results.absorbed == 0, "vacuum should not absorb particles");
+    expect(results.total_collisions == 0,
+           "vacuum should not produce collisions");
+    expect(results.scattered_at_least_once == 0,
+           "vacuum should not scatter particles");
+    expect(results.total_path_length ==
+               config.slab_thickness * config.particle_count,
+           "vacuum path length should equal slab thickness per particle");
+}
+
+void test_outcomes_conserve_particle_count() {
+    const transport::Material material{0.7, 1.3};
+    const transport::SimulationConfig config{20'000, 3.0, 987654321, 100'000};
+
+    const auto results = transport::simulate(material, config);
+
+    expect(results.completed_particles() == config.particle_count,
+           "terminal outcome counts should conserve particle count");
+    expect(results.scattered_at_least_once <= config.particle_count,
+           "scattered-particle count cannot exceed particle count");
+    expect(results.total_collisions >= results.absorbed,
+           "every absorbed particle must have at least one collision");
+}
+
+void test_fixed_seed_is_reproducible() {
+    const transport::Material material{0.4, 1.6};
+    const transport::SimulationConfig config{5'000, 1.5, 12345, 100'000};
+
+    const auto first = transport::simulate(material, config);
+    const auto second = transport::simulate(material, config);
+
+    expect(same_results(first, second),
+           "the same configuration and seed should reproduce results");
+}
+
+void test_absorption_only_has_no_scattering_or_reflection() {
+    const transport::Material absorber{2.0, 0.0};
+    const transport::SimulationConfig config{10'000, 1.0, 77, 10};
+
+    const auto results = transport::simulate(absorber, config);
+
+    expect(results.reflected == 0,
+           "particles cannot reflect without scattering");
+    expect(results.scattered_at_least_once == 0,
+           "absorption-only material cannot scatter particles");
+    expect(results.transmitted + results.absorbed == config.particle_count,
+           "absorption-only outcomes should conserve particle count");
+}
+
+void test_invalid_configuration_is_rejected() {
+    const transport::Material valid_material{0.5, 0.5};
+    transport::SimulationConfig config{};
+
+    config.particle_count = 0;
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(valid_material, config)); },
+        "zero particles should be rejected");
+
+    config = {};
+    config.slab_thickness = 0.0;
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(valid_material, config)); },
+        "zero slab thickness should be rejected");
+
+    config = {};
+    const transport::Material negative_absorption{-0.1, 0.5};
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(negative_absorption, config)); },
+        "negative coefficients should be rejected");
+
+    const transport::Material infinite_scattering{
+        0.5, std::numeric_limits<double>::infinity()};
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(infinite_scattering, config)); },
+        "infinite coefficients should be rejected");
+}
+
+}  // namespace
+
+int main() {
+    try {
+        test_vacuum_transmits_every_particle();
+        test_outcomes_conserve_particle_count();
+        test_fixed_seed_is_reproducible();
+        test_absorption_only_has_no_scattering_or_reflection();
+        test_invalid_configuration_is_rejected();
+    } catch (const std::exception& error) {
+        std::cerr << "FAILED: " << error.what() << '\n';
+        return 1;
+    }
+
+    std::cout << "All particle transport tests passed.\n";
+    return 0;
+}
