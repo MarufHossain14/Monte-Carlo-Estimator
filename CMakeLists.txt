@@ -17,13 +17,23 @@ add_executable(monte_carlo_pi monte_carlo_pi.cpp)
 
 # The particle-transport code is a library so that the command-line program,
 # tests, and future benchmark implementations can share one simulation core.
-add_library(particle_transport
+add_library(particle_transport_core
     src/transport.cpp
 )
-target_include_directories(particle_transport PUBLIC
+target_include_directories(particle_transport_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+if(MSVC)
+    target_compile_options(particle_transport_core PRIVATE /W4)
+else()
+    target_compile_options(
+        particle_transport_core PRIVATE -Wall -Wextra -Wpedantic
+    )
+endif()
+
+add_executable(particle_transport src/transport_cli.cpp)
+target_link_libraries(particle_transport PRIVATE particle_transport_core)
 if(MSVC)
     target_compile_options(particle_transport PRIVATE /W4)
 else()
@@ -35,7 +45,9 @@ if(BUILD_TESTING)
     add_executable(particle_transport_tests
         tests/transport_tests.cpp
     )
-    target_link_libraries(particle_transport_tests PRIVATE particle_transport)
+    target_link_libraries(
+        particle_transport_tests PRIVATE particle_transport_core
+    )
     add_test(NAME particle_transport_tests COMMAND particle_transport_tests)
 endif()
 
@@ -45,7 +57,7 @@ if(UNIX)
 endif()
 
 # Set output directory
-set_target_properties(monte_carlo_pi PROPERTIES
+set_target_properties(monte_carlo_pi particle_transport PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
