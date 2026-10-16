@@ -13,6 +13,30 @@
 #include <utility>
 #include <vector>
 
+#ifndef MONTE_CARLO_COMPILER_ID
+#define MONTE_CARLO_COMPILER_ID "unknown"
+#endif
+
+#ifndef MONTE_CARLO_COMPILER_VERSION
+#define MONTE_CARLO_COMPILER_VERSION "unknown"
+#endif
+
+#ifndef MONTE_CARLO_BUILD_TYPE
+#define MONTE_CARLO_BUILD_TYPE "unknown"
+#endif
+
+#ifndef MONTE_CARLO_CXX_FLAGS
+#define MONTE_CARLO_CXX_FLAGS "unknown"
+#endif
+
+#ifndef MONTE_CARLO_SYSTEM_NAME
+#define MONTE_CARLO_SYSTEM_NAME "unknown"
+#endif
+
+#ifndef MONTE_CARLO_SYSTEM_PROCESSOR
+#define MONTE_CARLO_SYSTEM_PROCESSOR "unknown"
+#endif
+
 namespace {
 
 struct BenchmarkOptions {
@@ -23,6 +47,7 @@ struct BenchmarkOptions {
     std::string output_filename{"transport_benchmark.csv"};
     transport::Material material{0.5, 0.5};
     transport::SimulationConfig simulation{};
+    std::string cpu_label;
 };
 
 struct TimedRun {
@@ -31,6 +56,16 @@ struct TimedRun {
     double elapsed_milliseconds;
     double particles_per_second;
     transport::SimulationResults results;
+};
+
+struct Environment {
+    std::string cpu;
+    std::string operating_system;
+    std::string architecture;
+    std::string compiler_id;
+    std::string compiler_version;
+    std::string build_type;
+    std::string compiler_flags;
 };
 
 void print_usage(const char* program_name) {
@@ -49,6 +84,7 @@ void print_usage(const char* program_name) {
         << "  --scattering <value>     Scattering coefficient (default: 0.5)\n"
         << "  --seed <number>          Fixed random seed (default: 5489)\n"
         << "  --max-collisions <count> Per-particle safety limit\n"
+        << "  --cpu-label <text>       Override the detected CPU description\n"
         << "  -h, --help               Show this help message\n";
 }
 
@@ -138,7 +174,7 @@ bool parse_options(
             argument == "--warmup" || argument == "--output" ||
             argument == "--thickness" || argument == "--absorption" ||
             argument == "--scattering" || argument == "--seed" ||
-            argument == "--max-collisions";
+            argument == "--max-collisions" || argument == "--cpu-label";
         if (!known_option) {
             error = "unknown option: " + argument;
             return false;
@@ -202,10 +238,98 @@ bool parse_options(
                 error = "maximum collisions must be a positive integer";
                 return false;
             }
+        } else if (argument == "--cpu-label") {
+            if (value.empty()) {
+                error = "CPU label cannot be empty";
+                return false;
+            }
+            options.cpu_label = value;
         }
     }
 
     return true;
+}
+
+std::string remove_matching_quotes(std::string value) {
+    if (value.size() >= 2 &&
+        ((value.front() == '"' && value.back() == '"') ||
+         (value.front() == '\'' && value.back() == '\''))) {
+        return value.substr(1, value.size() - 2);
+    }
+    return value;
+}
+
+std::string trim_whitespace(std::string value) {
+    const std::size_t first = value.find_first_not_of(" \t\r");
+    if (first == std::string::npos) {
+        return {};
+    }
+    const std::size_t last = value.find_last_not_of(" \t\r");
+    return value.substr(first, last - first + 1);
+}
+
+std::string value_from_file(
+    const std::string& filename,
+    const std::string& key,
+    char separator) {
+    std::ifstream file(filename);
+    std::string line;
+    while (std::getline(file, line)) {
+        const std::size_t position = line.find(separator);
+        if (position != std::string::npos &&
+            trim_whitespace(line.substr(0, position)) == key) {
+            return remove_matching_quotes(
+                trim_whitespace(line.substr(position + 1)));
+        }
+    }
+    return {};
+}
+
+Environment detect_environment(const BenchmarkOptions& options) {
+    std::string cpu = options.cpu_label;
+    std::string operating_system = MONTE_CARLO_SYSTEM_NAME;
+
+#if defined(__linux__)
+    if (cpu.empty()) {
+        cpu = value_from_file("/proc/cpuinfo", "model name", ':');
+    }
+    const std::string pretty_name =
+        value_from_file("/etc/os-release", "PRETTY_NAME", '=');
+    if (!pretty_name.empty()) {
+        operating_system = pretty_name;
+    }
+#endif
+
+    if (cpu.empty()) {
+        cpu = MONTE_CARLO_SYSTEM_PROCESSOR;
+    }
+
+    return {
+        cpu,
+        operating_system,
+        MONTE_CARLO_SYSTEM_PROCESSOR,
+        MONTE_CARLO_COMPILER_ID,
+        MONTE_CARLO_COMPILER_VERSION,
+        MONTE_CARLO_BUILD_TYPE,
+        MONTE_CARLO_CXX_FLAGS,
+    };
+}
+
+std::string csv_escape(const std::string& value) {
+    if (value.find_first_of(",\"\n") == std::string::npos) {
+        return value;
+    }
+
+    std::string escaped{"\""};
+    for (const char character : value) {
+        if (character == '"') {
+            escaped += "\"\"";
+        } else {
+            escaped += character;
+        }
+    }
+    escaped += '"';
+    return escaped;
 }
 
 double median(std::vector<double> values) {
@@ -256,6 +380,7 @@ TimedRun run_once(
 
 bool write_raw_results(
     const BenchmarkOptions& options,
+    const Environment& environment,
     const std::vector<TimedRun>& runs) {
     std::ofstream file(options.output_filename);
     if (!file) {
@@ -268,7 +393,9 @@ bool write_raw_results(
             "seed,slab_thickness,absorption_coefficient,"
             "scattering_coefficient,max_collisions_per_particle,"
             "transmitted,reflected,absorbed,scattered_at_least_once,"
-            "total_collisions,total_path_length\n";
+            "total_collisions,total_path_length,cpu,operating_system,"
+            "architecture,compiler_id,compiler_version,build_type,"
+            "compiler_flags,thread_count\n";
     file << std::setprecision(17);
 
     for (const auto& run : runs) {
@@ -283,7 +410,14 @@ bool write_raw_results(
              << run.results.absorbed << ','
              << run.results.scattered_at_least_once << ','
              << run.results.total_collisions << ','
-             << run.results.total_path_length << '\n';
+             << run.results.total_path_length << ','
+             << csv_escape(environment.cpu) << ','
+             << csv_escape(environment.operating_system) << ','
+             << csv_escape(environment.architecture) << ','
+             << csv_escape(environment.compiler_id) << ','
+             << csv_escape(environment.compiler_version) << ','
+             << csv_escape(environment.build_type) << ','
+             << csv_escape(environment.compiler_flags) << ",1\n";
     }
 
     if (!file) {
@@ -295,6 +429,7 @@ bool write_raw_results(
 }
 
 int run_benchmarks(const BenchmarkOptions& options) {
+    const Environment environment = detect_environment(options);
     std::vector<TimedRun> all_runs;
     all_runs.reserve(
         options.particle_counts.size() * options.repetitions);
@@ -303,7 +438,15 @@ int run_benchmarks(const BenchmarkOptions& options) {
               << "===================================\n"
               << "Repetitions: " << options.repetitions
               << ", warm-ups: " << options.warmup_runs
-              << ", seed: " << options.simulation.seed << "\n\n"
+              << ", seed: " << options.simulation.seed << '\n'
+              << "CPU: " << environment.cpu << '\n'
+              << "OS: " << environment.operating_system
+              << " (" << environment.architecture << ")\n"
+              << "Compiler: " << environment.compiler_id << ' '
+              << environment.compiler_version << '\n'
+              << "Build: " << environment.build_type
+              << ", flags: " << environment.compiler_flags << '\n'
+              << "Threads: 1 (serial baseline)\n\n"
               << std::left << std::setw(14) << "Particles"
               << std::right << std::setw(14) << "Median (ms)"
               << std::setw(14) << "MAD (ms)"
@@ -341,7 +484,7 @@ int run_benchmarks(const BenchmarkOptions& options) {
                   << '\n';
     }
 
-    if (!write_raw_results(options, all_runs)) {
+    if (!write_raw_results(options, environment, all_runs)) {
         return 1;
     }
     std::cout << "\nRaw results saved to " << options.output_filename << '\n';

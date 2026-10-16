@@ -110,6 +110,42 @@ Use `./build/bin/particle_transport --help` to see all options. The simplified
 physics and terminology are explained in
 [the particle model documentation](docs/particle_model.md).
 
+## Performance benchmark
+
+Always benchmark an optimized Release build:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/bin/transport_benchmark
+```
+
+The default benchmark measures 1,000, 10,000, 100,000, and 1,000,000
+particles. Each workload receives one unmeasured warm-up and seven measured
+runs. The console summary reports the median time, median absolute deviation
+(MAD), and throughput in particles per second. Individual measurements are
+saved to `transport_benchmark.csv`.
+
+The workload sizes, repetitions, and output path can be changed explicitly:
+
+```bash
+./build/bin/transport_benchmark \
+    --particles 1000,10000,100000,1000000,10000000 \
+    --repetitions 9 \
+    --warmup 2 \
+    --seed 42 \
+    --output serial_baseline.csv
+```
+
+Each CSV row records the raw timing, throughput, simulation configuration,
+outcome counts, CPU, operating system, architecture, compiler and version,
+build type, compiler flags, seed, and thread count. On systems where automatic
+CPU detection is unavailable, provide a label with `--cpu-label "CPU model"`.
+
+Benchmark results depend on other activity, power settings, temperature, and
+hardware. Keep the configuration fixed, close unnecessary programs, retain
+the raw measurements, and compare medians rather than a single fastest run.
+
 ## Alternative pi-estimator builds
 
 Using the Makefile:

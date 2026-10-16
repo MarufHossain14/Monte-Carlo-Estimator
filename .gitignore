@@ -53,6 +53,7 @@ cmake-build-*/
 *.swp
 .DS_Store
 Thumbs.db
+/transport_benchmark.csv
 
 # Ignore generated coverage data
 *.gcno

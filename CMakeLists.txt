@@ -38,6 +38,22 @@ target_link_libraries(particle_transport PRIVATE particle_transport_core)
 add_executable(transport_benchmark benchmarks/transport_benchmark.cpp)
 target_link_libraries(transport_benchmark PRIVATE particle_transport_core)
 
+# Embed the build information needed to interpret benchmark results later.
+set(BENCHMARK_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_RELEASE}"
+)
+string(STRIP "${BENCHMARK_CXX_FLAGS}" BENCHMARK_CXX_FLAGS)
+string(REPLACE "\\" "\\\\" BENCHMARK_CXX_FLAGS "${BENCHMARK_CXX_FLAGS}")
+string(REPLACE "\"" "\\\"" BENCHMARK_CXX_FLAGS "${BENCHMARK_CXX_FLAGS}")
+target_compile_definitions(transport_benchmark PRIVATE
+    MONTE_CARLO_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}"
+    MONTE_CARLO_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+    MONTE_CARLO_BUILD_TYPE="$<CONFIG>"
+    MONTE_CARLO_CXX_FLAGS="${BENCHMARK_CXX_FLAGS}"
+    MONTE_CARLO_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
+    MONTE_CARLO_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
+)
+
 if(MSVC)
     target_compile_options(particle_transport PRIVATE /W4)
     target_compile_options(transport_benchmark PRIVATE /W4)
