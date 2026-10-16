@@ -27,6 +27,17 @@ void expect_invalid_argument(
     throw std::runtime_error(message);
 }
 
+void expect_runtime_error(
+    const std::function<void()>& operation,
+    const std::string& message) {
+    try {
+        operation();
+    } catch (const std::runtime_error&) {
+        return;
+    }
+    throw std::runtime_error(message);
+}
+
 bool same_results(
     const transport::SimulationResults& left,
     const transport::SimulationResults& right) {
@@ -106,6 +117,22 @@ void test_absorption_only_has_no_scattering_or_reflection() {
            "absorption-only outcomes should conserve particle count");
 }
 
+void test_scattering_only_never_absorbs() {
+    const transport::Material scatterer{0.0, 1.5};
+    const transport::SimulationConfig config{20'000, 2.0, 2468, 100'000};
+
+    const auto results = transport::simulate(scatterer, config);
+
+    expect(results.absorbed == 0,
+           "zero absorption coefficient should prevent absorption");
+    expect(results.transmitted + results.reflected == config.particle_count,
+           "scattering-only exit counts should conserve particle count");
+    expect(results.scattered_at_least_once > 0,
+           "an interacting scattering material should scatter particles");
+    expect(results.total_collisions >= results.scattered_at_least_once,
+           "each scattered particle should have at least one collision");
+}
+
 void test_invalid_configuration_is_rejected() {
     const transport::Material valid_material{0.5, 0.5};
     transport::SimulationConfig config{};
@@ -121,17 +148,64 @@ void test_invalid_configuration_is_rejected() {
         [&] { static_cast<void>(transport::simulate(valid_material, config)); },
         "zero slab thickness should be rejected");
 
+    config.slab_thickness = -1.0;
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(valid_material, config)); },
+        "negative slab thickness should be rejected");
+
+    config.slab_thickness = std::numeric_limits<double>::infinity();
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(valid_material, config)); },
+        "infinite slab thickness should be rejected");
+
+    config.slab_thickness = std::numeric_limits<double>::quiet_NaN();
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(valid_material, config)); },
+        "NaN slab thickness should be rejected");
+
+    config = {};
+    config.max_collisions_per_particle = 0;
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(valid_material, config)); },
+        "a zero collision limit should be rejected");
+
     config = {};
     const transport::Material negative_absorption{-0.1, 0.5};
     expect_invalid_argument(
         [&] { static_cast<void>(transport::simulate(negative_absorption, config)); },
         "negative coefficients should be rejected");
 
+    const transport::Material negative_scattering{0.5, -0.1};
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(negative_scattering, config)); },
+        "negative scattering should be rejected");
+
     const transport::Material infinite_scattering{
         0.5, std::numeric_limits<double>::infinity()};
     expect_invalid_argument(
         [&] { static_cast<void>(transport::simulate(infinite_scattering, config)); },
         "infinite coefficients should be rejected");
+
+    const transport::Material nan_absorption{
+        std::numeric_limits<double>::quiet_NaN(), 0.5};
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(nan_absorption, config)); },
+        "NaN coefficients should be rejected");
+
+    const double largest = std::numeric_limits<double>::max();
+    const transport::Material overflowing_total{largest, largest};
+    expect_invalid_argument(
+        [&] { static_cast<void>(transport::simulate(overflowing_total, config)); },
+        "an overflowing total interaction coefficient should be rejected");
+}
+
+void test_collision_limit_stops_pathological_history() {
+    const transport::Material scatterer{0.0, 1.0};
+    const transport::SimulationConfig config{1, 1e100, 42, 1};
+
+    expect_runtime_error(
+        [&] { static_cast<void>(transport::simulate(scatterer, config)); },
+        "a history exceeding the collision guard should fail clearly");
 }
 
 void test_probability_estimates_include_uncertainty() {
@@ -166,7 +240,9 @@ int main() {
         test_outcomes_conserve_particle_count();
         test_fixed_seed_is_reproducible();
         test_absorption_only_has_no_scattering_or_reflection();
+        test_scattering_only_never_absorbs();
         test_invalid_configuration_is_rejected();
+        test_collision_limit_stops_pathological_history();
         test_probability_estimates_include_uncertainty();
     } catch (const std::exception& error) {
         std::cerr << "FAILED: " << error.what() << '\n';
