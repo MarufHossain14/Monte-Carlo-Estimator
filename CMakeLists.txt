@@ -34,10 +34,18 @@ endif()
 
 add_executable(particle_transport src/transport_cli.cpp)
 target_link_libraries(particle_transport PRIVATE particle_transport_core)
+
+add_executable(transport_benchmark benchmarks/transport_benchmark.cpp)
+target_link_libraries(transport_benchmark PRIVATE particle_transport_core)
+
 if(MSVC)
     target_compile_options(particle_transport PRIVATE /W4)
+    target_compile_options(transport_benchmark PRIVATE /W4)
 else()
     target_compile_options(particle_transport PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(
+        transport_benchmark PRIVATE -Wall -Wextra -Wpedantic
+    )
 endif()
 
 include(CTest)
@@ -49,6 +57,14 @@ if(BUILD_TESTING)
         particle_transport_tests PRIVATE particle_transport_core
     )
     add_test(NAME particle_transport_tests COMMAND particle_transport_tests)
+    add_test(
+        NAME transport_benchmark_smoke
+        COMMAND transport_benchmark
+            --particles 10,100
+            --repetitions 2
+            --warmup 1
+            --output ${CMAKE_CURRENT_BINARY_DIR}/transport_benchmark_smoke.csv
+    )
 endif()
 
 # Link math library (for M_PI constant)
@@ -57,7 +73,9 @@ if(UNIX)
 endif()
 
 # Set output directory
-set_target_properties(monte_carlo_pi particle_transport PROPERTIES
+set_target_properties(
+    monte_carlo_pi particle_transport transport_benchmark
+    PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
