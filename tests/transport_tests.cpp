@@ -252,6 +252,61 @@ void test_probability_estimates_include_uncertainty() {
         "an outcome count above the total should be rejected");
 }
 
+void test_many_seeds_follow_expected_uncertainty() {
+    constexpr std::uint64_t trial_count = 24;
+    constexpr std::uint64_t particles_per_trial = 20'000;
+    const transport::Material absorber{0.8, 0.0};
+    transport::SimulationConfig config{
+        particles_per_trial, 1.5, 0, 10};
+
+    const double expected_probability = std::exp(
+        -absorber.absorption_coefficient * config.slab_thickness);
+    const double trial_standard_error = std::sqrt(
+        expected_probability * (1.0 - expected_probability) /
+        static_cast<double>(particles_per_trial));
+
+    double probability_sum = 0.0;
+    double squared_standardized_error_sum = 0.0;
+    std::uint64_t trials_within_95_percent = 0;
+
+    for (std::uint64_t trial = 0; trial < trial_count; ++trial) {
+        config.seed = 10'000 + trial;
+        const auto results = transport::simulate(absorber, config);
+        const double observed_probability =
+            static_cast<double>(results.transmitted) /
+            static_cast<double>(particles_per_trial);
+        const double standardized_error =
+            (observed_probability - expected_probability) /
+            trial_standard_error;
+
+        probability_sum += observed_probability;
+        squared_standardized_error_sum +=
+            standardized_error * standardized_error;
+        if (std::abs(standardized_error) <= 1.96) {
+            ++trials_within_95_percent;
+        }
+    }
+
+    const double mean_probability =
+        probability_sum / static_cast<double>(trial_count);
+    const double mean_standard_error =
+        trial_standard_error / std::sqrt(static_cast<double>(trial_count));
+    expect_near(
+        mean_probability,
+        expected_probability,
+        6.0 * mean_standard_error,
+        "mean transmission across seeds should match the analytical value");
+
+    // Standardized errors should have an RMS near one when the predicted
+    // binomial uncertainty describes the run-to-run variation correctly.
+    const double standardized_error_rms = std::sqrt(
+        squared_standardized_error_sum / static_cast<double>(trial_count));
+    expect(standardized_error_rms > 0.4 && standardized_error_rms < 1.8,
+           "run-to-run variation should match predicted sampling uncertainty");
+    expect(trials_within_95_percent >= 14,
+           "most independent trials should fall within two standard errors");
+}
+
 }  // namespace
 
 int main() {
@@ -264,6 +319,7 @@ int main() {
         test_invalid_configuration_is_rejected();
         test_collision_limit_stops_pathological_history();
         test_probability_estimates_include_uncertainty();
+        test_many_seeds_follow_expected_uncertainty();
     } catch (const std::exception& error) {
         std::cerr << "FAILED: " << error.what() << '\n';
         return 1;
