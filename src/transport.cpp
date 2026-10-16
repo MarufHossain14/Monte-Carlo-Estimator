@@ -1,5 +1,6 @@
 #include "transport/transport.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <random>
 #include <stdexcept>
@@ -131,6 +132,42 @@ double Material::total_interaction_coefficient() const noexcept {
 
 std::uint64_t SimulationResults::completed_particles() const noexcept {
     return transmitted + reflected + absorbed;
+}
+
+ProbabilityEstimate estimate_probability(
+    std::uint64_t outcome_count,
+    std::uint64_t total_count) {
+    if (total_count == 0) {
+        throw std::invalid_argument("probability total must be positive");
+    }
+    if (outcome_count > total_count) {
+        throw std::invalid_argument(
+            "probability outcome count cannot exceed the total");
+    }
+
+    constexpr double z = 1.959963984540054;  // 97.5th percentile for 95% CI.
+    constexpr double z_squared = z * z;
+    const double total = static_cast<double>(total_count);
+    const double probability = static_cast<double>(outcome_count) / total;
+    const double standard_error =
+        std::sqrt(probability * (1.0 - probability) / total);
+
+    // The Wilson score interval behaves better than p +/- z*SE for rare
+    // outcomes and small samples while requiring no additional simulation.
+    const double denominator = 1.0 + z_squared / total;
+    const double center =
+        (probability + z_squared / (2.0 * total)) / denominator;
+    const double margin = z / denominator *
+        std::sqrt(
+            probability * (1.0 - probability) / total +
+            z_squared / (4.0 * total * total));
+
+    return {
+        probability,
+        standard_error,
+        std::max(0.0, center - margin),
+        std::min(1.0, center + margin),
+    };
 }
 
 SimulationResults simulate(

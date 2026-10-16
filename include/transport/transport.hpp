@@ -48,6 +48,23 @@ struct SimulationResults {
     [[nodiscard]] std::uint64_t completed_particles() const noexcept;
 };
 
+/** Estimated binomial probability and its sampling uncertainty. */
+struct ProbabilityEstimate {
+    double probability;
+    double standard_error;
+    double confidence_lower_95;
+    double confidence_upper_95;
+};
+
+/**
+ * Calculate an observed outcome probability, its standard error, and a 95%
+ * Wilson score interval. Wilson intervals remain useful when a count is near
+ * zero or the total, where a simple normal interval can collapse.
+ */
+[[nodiscard]] ProbabilityEstimate estimate_probability(
+    std::uint64_t outcome_count,
+    std::uint64_t total_count);
+
 /**
  * Simulate independent particles entering the left side of a one-dimensional
  * slab while initially travelling to the right.

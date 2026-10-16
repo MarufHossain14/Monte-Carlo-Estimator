@@ -150,12 +150,13 @@ void print_outcome(
     const std::string& label,
     std::uint64_t count,
     std::uint64_t total) {
-    const double probability =
-        static_cast<double>(count) / static_cast<double>(total);
+    const auto estimate = transport::estimate_probability(count, total);
     std::cout << "  " << std::left << std::setw(13) << label << std::right
               << std::setw(10) << count << "  "
               << std::fixed << std::setprecision(4)
-              << probability * 100.0 << "%\n";
+              << estimate.probability * 100.0 << "%  ["
+              << estimate.confidence_lower_95 * 100.0 << "%, "
+              << estimate.confidence_upper_95 * 100.0 << "%]\n";
 }
 
 void print_results(
@@ -176,7 +177,7 @@ void print_results(
               << "Scattering coefficient: "
               << options.material.scattering_coefficient << '\n'
               << "Random seed:            " << options.simulation.seed << "\n\n"
-              << "Outcomes:\n";
+              << "Outcomes (count, probability, 95% confidence interval):\n";
 
     print_outcome(
         "Transmitted", results.transmitted, options.simulation.particle_count);

@@ -38,6 +38,16 @@ bool same_results(
         left.total_path_length == right.total_path_length;
 }
 
+void expect_near(
+    double actual,
+    double expected,
+    double tolerance,
+    const std::string& message) {
+    if (std::abs(actual - expected) > tolerance) {
+        throw std::runtime_error(message);
+    }
+}
+
 void test_vacuum_transmits_every_particle() {
     const transport::Material vacuum{};
     const transport::SimulationConfig config{1'000, 2.5, 42, 100};
@@ -124,6 +134,30 @@ void test_invalid_configuration_is_rejected() {
         "infinite coefficients should be rejected");
 }
 
+void test_probability_estimates_include_uncertainty() {
+    const auto half = transport::estimate_probability(50, 100);
+    expect_near(half.probability, 0.5, 1e-12,
+                "probability should equal count divided by total");
+    expect_near(half.standard_error, 0.05, 1e-12,
+                "binomial standard error should be calculated correctly");
+    expect(half.confidence_lower_95 < half.probability &&
+               half.confidence_upper_95 > half.probability,
+           "confidence interval should contain the observed probability");
+
+    const auto zero = transport::estimate_probability(0, 100);
+    expect_near(zero.confidence_lower_95, 0.0, 1e-15,
+                "zero observed outcomes should have a zero lower bound");
+    expect(zero.confidence_upper_95 > 0.0,
+           "zero observed outcomes should retain a nonzero upper bound");
+
+    expect_invalid_argument(
+        [] { static_cast<void>(transport::estimate_probability(0, 0)); },
+        "a zero probability total should be rejected");
+    expect_invalid_argument(
+        [] { static_cast<void>(transport::estimate_probability(11, 10)); },
+        "an outcome count above the total should be rejected");
+}
+
 }  // namespace
 
 int main() {
@@ -133,6 +167,7 @@ int main() {
         test_fixed_seed_is_reproducible();
         test_absorption_only_has_no_scattering_or_reflection();
         test_invalid_configuration_is_rejected();
+        test_probability_estimates_include_uncertainty();
     } catch (const std::exception& error) {
         std::cerr << "FAILED: " << error.what() << '\n';
         return 1;
