@@ -103,9 +103,9 @@ void test_fixed_seed_is_reproducible() {
            "the same configuration and seed should reproduce results");
 }
 
-void test_absorption_only_has_no_scattering_or_reflection() {
-    const transport::Material absorber{2.0, 0.0};
-    const transport::SimulationConfig config{10'000, 1.0, 77, 10};
+void test_absorption_only_matches_analytical_solution() {
+    const transport::Material absorber{0.8, 0.0};
+    const transport::SimulationConfig config{200'000, 1.5, 77, 10};
 
     const auto results = transport::simulate(absorber, config);
 
@@ -115,6 +115,26 @@ void test_absorption_only_has_no_scattering_or_reflection() {
            "absorption-only material cannot scatter particles");
     expect(results.transmitted + results.absorbed == config.particle_count,
            "absorption-only outcomes should conserve particle count");
+    expect(results.total_collisions == results.absorbed,
+           "each absorbed particle should have exactly one collision");
+
+    // With no scattering, a particle is transmitted only when its first
+    // interaction distance exceeds the slab thickness. The exact probability
+    // is exp(-Sigma_a * L), providing an independent mathematical reference.
+    const double expected_transmission = std::exp(
+        -absorber.absorption_coefficient * config.slab_thickness);
+    const double observed_transmission =
+        static_cast<double>(results.transmitted) /
+        static_cast<double>(config.particle_count);
+    const double expected_standard_error = std::sqrt(
+        expected_transmission * (1.0 - expected_transmission) /
+        static_cast<double>(config.particle_count));
+
+    expect_near(
+        observed_transmission,
+        expected_transmission,
+        6.0 * expected_standard_error,
+        "absorption-only transmission should match exp(-Sigma_a * L)");
 }
 
 void test_scattering_only_never_absorbs() {
@@ -239,7 +259,7 @@ int main() {
         test_vacuum_transmits_every_particle();
         test_outcomes_conserve_particle_count();
         test_fixed_seed_is_reproducible();
-        test_absorption_only_has_no_scattering_or_reflection();
+        test_absorption_only_matches_analytical_solution();
         test_scattering_only_never_absorbs();
         test_invalid_configuration_is_rejected();
         test_collision_limit_stops_pathological_history();
