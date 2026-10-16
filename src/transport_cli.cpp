@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +15,7 @@ namespace {
 struct Options {
     transport::Material material{0.5, 0.5};
     transport::SimulationConfig simulation{};
+    std::string csv_filename;
 };
 
 void print_usage(const char* program_name) {
@@ -27,6 +29,7 @@ void print_usage(const char* program_name) {
         << "  --scattering <value>      Scattering coefficient (default: 0.5)\n"
         << "  --seed <number>           Random seed (default: 5489)\n"
         << "  --max-collisions <count>  Per-particle safety limit (default: 1000000)\n"
+        << "  --csv <filename>          Save configuration and results to CSV\n"
         << "  -h, --help                Show this help message\n";
 }
 
@@ -90,7 +93,7 @@ bool parse_options(
             argument == "-n" || argument == "--particles" ||
             argument == "--thickness" || argument == "--absorption" ||
             argument == "--scattering" || argument == "--seed" ||
-            argument == "--max-collisions";
+            argument == "--max-collisions" || argument == "--csv";
         if (!known_option) {
             error = "unknown option: " + argument;
             return false;
@@ -140,9 +143,73 @@ bool parse_options(
                 error = "maximum collisions must be a positive integer";
                 return false;
             }
+        } else if (argument == "--csv") {
+            if (value.empty()) {
+                error = "CSV filename cannot be empty";
+                return false;
+            }
+            options.csv_filename = value;
         }
     }
 
+    return true;
+}
+
+bool write_csv(
+    const std::string& filename,
+    const Options& options,
+    const transport::SimulationResults& results) {
+    std::ofstream file(filename);
+    if (!file) {
+        std::cerr << "Error: could not open CSV file " << filename << '\n';
+        return false;
+    }
+
+    const auto transmitted = transport::estimate_probability(
+        results.transmitted, options.simulation.particle_count);
+    const auto reflected = transport::estimate_probability(
+        results.reflected, options.simulation.particle_count);
+    const auto absorbed = transport::estimate_probability(
+        results.absorbed, options.simulation.particle_count);
+
+    file << "particle_count,slab_thickness,absorption_coefficient,"
+            "scattering_coefficient,seed,max_collisions_per_particle,"
+            "transmitted,reflected,absorbed,scattered_at_least_once,"
+            "total_collisions,total_path_length,transmitted_probability,"
+            "transmitted_ci_lower_95,transmitted_ci_upper_95,"
+            "reflected_probability,reflected_ci_lower_95,"
+            "reflected_ci_upper_95,absorbed_probability,"
+            "absorbed_ci_lower_95,absorbed_ci_upper_95\n";
+
+    // Seventeen significant digits are enough to round-trip a double, which
+    // keeps saved configurations and results reproducible.
+    file << std::setprecision(17)
+         << options.simulation.particle_count << ','
+         << options.simulation.slab_thickness << ','
+         << options.material.absorption_coefficient << ','
+         << options.material.scattering_coefficient << ','
+         << options.simulation.seed << ','
+         << options.simulation.max_collisions_per_particle << ','
+         << results.transmitted << ',' << results.reflected << ','
+         << results.absorbed << ',' << results.scattered_at_least_once << ','
+         << results.total_collisions << ',' << results.total_path_length << ','
+         << transmitted.probability << ','
+         << transmitted.confidence_lower_95 << ','
+         << transmitted.confidence_upper_95 << ','
+         << reflected.probability << ','
+         << reflected.confidence_lower_95 << ','
+         << reflected.confidence_upper_95 << ','
+         << absorbed.probability << ','
+         << absorbed.confidence_lower_95 << ','
+         << absorbed.confidence_upper_95 << '\n';
+
+    if (!file) {
+        std::cerr << "Error: failed while writing CSV file " << filename
+                  << '\n';
+        return false;
+    }
+
+    std::cout << "Results saved to " << filename << '\n';
     return true;
 }
 
@@ -226,6 +293,11 @@ int main(int argc, char* argv[]) {
             std::chrono::steady_clock::now() - start);
 
         print_results(options, results, elapsed);
+
+        if (!options.csv_filename.empty() &&
+            !write_csv(options.csv_filename, options, results)) {
+            return 1;
+        }
     } catch (const std::exception& exception) {
         std::cerr << "Simulation failed: " << exception.what() << '\n';
         return 1;

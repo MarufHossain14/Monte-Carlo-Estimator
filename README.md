@@ -12,7 +12,8 @@ one-dimensional slab. Its assumptions are described in
 
 - `monte_carlo_pi`: a command-line Monte Carlo pi estimator with reproducible
   seeds, progress reporting, precise timing, and CSV export.
-- `particle_transport`: the reusable C++ simulation library.
+- `particle_transport`: the command-line particle simulation, backed by a
+  reusable C++ library.
 - `particle_transport_tests`: correctness tests for the initial transport
   model.
 - `plot_results.py`: an optional Python script for visualizing pi-estimator
@@ -76,6 +77,38 @@ After building with CMake:
 ```bash
 ctest --test-dir build --output-on-failure
 ```
+
+## Particle-transport usage
+
+Run the simulation with its documented default configuration:
+
+```bash
+./build/bin/particle_transport
+```
+
+Configure the number of particles and material properties explicitly:
+
+```bash
+./build/bin/particle_transport \
+    --particles 100000 \
+    --thickness 2.0 \
+    --absorption 0.4 \
+    --scattering 0.6 \
+    --seed 42 \
+    --max-collisions 100000 \
+    --csv transport_results.csv
+```
+
+The program reports transmitted, reflected, and absorbed counts; their
+estimated probabilities and 95% confidence intervals; the number of particles
+that scattered; total and mean collisions; mean path length; and execution
+time. The optional CSV file contains the model configuration and results in a
+single row. Timing is intentionally excluded from the CSV so identical inputs
+and seeds produce identical files.
+
+Use `./build/bin/particle_transport --help` to see all options. The simplified
+physics and terminology are explained in
+[the particle model documentation](docs/particle_model.md).
 
 ## Alternative pi-estimator builds
 
